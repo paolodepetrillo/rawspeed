@@ -39,9 +39,9 @@
 // IWYU pragma: no_include <ext/alloc_traits.h>
 // IWYU pragma: no_include <type_traits>
 
-using std::vector;
 using std::fill_n;
 using std::make_pair;
+using std::vector;
 
 namespace rawspeed {
 
@@ -243,8 +243,8 @@ protected:
   }
 
   // traverses the current ROI and applies the operation OP to each pixel,
-  // i.e. each pixel value v is replaced by op(x, y, v), where x/y are the
-  // coordinates of the pixel value v.
+  // i.e. each pixel value v is replaced by op(x, y, p, v), where x/y are
+  // the coordinates in plane (p + firstPlane) of the pixel value v.
   template <typename T, typename OP> void applyOP(const RawImage& ri, OP op) {
     int cpp = ri->getCpp();
     const iRectangle2D& ROI = getRoi();
@@ -257,7 +257,7 @@ protected:
       // ^^^ GainMap opcode does require global image coordinates
       for (auto x = ROI.getLeft(); x < ROI.getRight(); x += colPitch) {
         for (auto p = 0U; p < planes; ++p)
-          src[x * cpp + p] = op(x, y, src[x * cpp + p]);
+          src[x * cpp + p] = op(x, y, p, src[x * cpp + p]);
       }
     }
   }
@@ -279,8 +279,8 @@ protected:
   }
 
   void apply(const RawImage& ri) override {
-    applyOP<uint16_t>(
-        ri, [this](uint32_t x, uint32_t y, uint16_t v) { return lookup[v]; });
+    applyOP<uint16_t>(ri, [this](uint32_t x, uint32_t y, uint32_t p,
+                                 uint16_t v) { return lookup[v]; });
   }
 };
 
@@ -375,13 +375,13 @@ public:
   void apply(const RawImage& ri) override {
     if (ri->getDataType() == TYPE_USHORT16) {
       this->template applyOP<uint16_t>(ri, [this](uint32_t x, uint32_t y,
-                                                  uint16_t v) {
+                                                  uint32_t p, uint16_t v) {
         return clampBits(
             (v * static_cast<int>(pixelGain(x, y) * 1024.0F) + 512) >> 10, 16);
       });
     } else {
       this->template applyOP<float>(
-          ri, [this](uint32_t x, uint32_t y, uint16_t v) {
+          ri, [this](uint32_t x, uint32_t y, uint32_t p, uint16_t v) {
             return std::min(v * pixelGain(x, y), 1.0F);
           });
     }
@@ -496,14 +496,14 @@ public:
   void apply(const RawImage& ri) override {
     if (ri->getDataType() == TYPE_USHORT16) {
       this->template applyOP<uint16_t>(
-          ri, [this](uint32_t x, uint32_t y, uint16_t v) {
+          ri, [this](uint32_t x, uint32_t y, uint32_t p, uint16_t v) {
             return clampBits(this->deltaI[S::select(x, y)] + v, 16);
           });
     } else {
-      this->template applyOP<float>(ri,
-                                    [this](uint32_t x, uint32_t y, float v) {
-                                      return this->deltaF[S::select(x, y)] + v;
-                                    });
+      this->template applyOP<float>(
+          ri, [this](uint32_t x, uint32_t y, uint32_t p, float v) {
+            return this->deltaF[S::select(x, y)] + v;
+          });
     }
   }
 };
@@ -534,14 +534,14 @@ public:
   void apply(const RawImage& ri) override {
     if (ri->getDataType() == TYPE_USHORT16) {
       this->template applyOP<uint16_t>(ri, [this](uint32_t x, uint32_t y,
-                                                  uint16_t v) {
+                                                  uint32_t p, uint16_t v) {
         return clampBits((this->deltaI[S::select(x, y)] * v + 512) >> 10, 16);
       });
     } else {
-      this->template applyOP<float>(ri,
-                                    [this](uint32_t x, uint32_t y, float v) {
-                                      return this->deltaF[S::select(x, y)] * v;
-                                    });
+      this->template applyOP<float>(
+          ri, [this](uint32_t x, uint32_t y, uint32_t p, float v) {
+            return this->deltaF[S::select(x, y)] * v;
+          });
     }
   }
 };
