@@ -254,6 +254,7 @@ protected:
       src += firstPlane;
       // FIXME: is op() really supposed to receive global image coordinates,
       // and not [0..ROI.getHeight()-1][0..ROI.getWidth()-1] ?
+      // ^^^ GainMap opcode does require global image coordinates
       for (auto x = ROI.getLeft(); x < ROI.getRight(); x += colPitch) {
         for (auto p = 0U; p < planes; ++p)
           src[x * cpp + p] = op(x, y, src[x * cpp + p]);
@@ -326,6 +327,83 @@ public:
         val += polynomial[j] * pow(i / 65536.0, j);
       lookup[i] = (clampBits(static_cast<int>(val * 65535.5), 16));
     }
+  }
+};
+
+// ****************************************************************************
+
+class DngOpcodes::GainMap : public PixelOpcode {
+  uint32_t mapPointsV;
+  uint32_t mapPointsH;
+  float mapSpacingV;
+  float mapSpacingH;
+  float mapOriginV;
+  float mapOriginH;
+  uint32_t mapPlanes;
+  vector<float> mapGain;
+  float xToRel;
+  float yToRel;
+
+public:
+  explicit GainMap(const RawImage& ri, ByteStream* bs) : PixelOpcode(ri, bs) {
+    mapPointsV = bs->getU32();
+    mapPointsH = bs->getU32();
+    mapSpacingV = bs->getDouble();
+    mapSpacingH = bs->getDouble();
+    mapOriginV = bs->getDouble();
+    mapOriginH = bs->getDouble();
+    mapPlanes = bs->getU32();
+
+    const auto mapGain_size = mapPointsV * mapPointsH * mapPlanes;
+    bs->check(4UL * mapGain_size);
+    mapGain.reserve(mapGain_size);
+    std::generate_n(std::back_inserter(mapGain), mapGain_size,
+                    [&bs]() { return bs->getFloat(); });
+  }
+
+  void setup(const RawImage& ri) override {
+    PixelOpcode::setup(ri);
+
+    if (mapPlanes != 1) {
+      ThrowRDE("GainMap is only supported with 1 plane");
+    }
+
+    xToRel = 1.F / ri->getUncroppedDim().x;
+    yToRel = 1.F / ri->getUncroppedDim().y;
+  }
+
+  void apply(const RawImage& ri) override {
+    if (ri->getDataType() == TYPE_USHORT16) {
+      this->template applyOP<uint16_t>(ri, [this](uint32_t x, uint32_t y,
+                                                  uint16_t v) {
+        return clampBits(
+            (v * static_cast<int>(pixelGain(x, y) * 1024.0F) + 512) >> 10, 16);
+      });
+    } else {
+      this->template applyOP<float>(
+          ri, [this](uint32_t x, uint32_t y, uint16_t v) {
+            return std::min(v * pixelGain(x, y), 1.0F);
+          });
+    }
+  }
+
+  float pixelGain(uint32_t x, uint32_t y) {
+    float xMap =
+        std::min(std::max(((xToRel * x) - mapOriginH) / mapSpacingH, 0.0F),
+                 static_cast<float>(mapPointsH));
+    float yMap =
+        std::min(std::max(((yToRel * y) - mapOriginV) / mapSpacingV, 0.0F),
+                 static_cast<float>(mapPointsV));
+    uint32_t xIndex = std::min(static_cast<uint32_t>(xMap), mapPointsH - 1);
+    uint32_t yIndex = std::min(static_cast<uint32_t>(yMap), mapPointsV - 1);
+    float xFrac = xMap - xIndex;
+    float yFrac = yMap - yIndex;
+    float gainTop = (1.0F - xFrac) * mapGain[yIndex * mapPointsH + xIndex] +
+                    xFrac * mapGain[yIndex * mapPointsH + xIndex + 1];
+    float gainBottom =
+        (1.0F - xFrac) * mapGain[(yIndex + 1) * mapPointsH + xIndex] +
+        xFrac * mapGain[(yIndex + 1) * mapPointsH + xIndex + 1];
+    return (1.0F - yFrac) * gainTop + yFrac * gainBottom;
   }
 };
 
@@ -566,7 +644,8 @@ const std::map<uint32_t, std::pair<const char*, DngOpcodes::constructor_t>>
          make_pair("MapTable", &DngOpcodes::constructor<DngOpcodes::TableMap>)},
         {8U, make_pair("MapPolynomial",
                        &DngOpcodes::constructor<DngOpcodes::PolynomialMap>)},
-        {9U, make_pair("GainMap", nullptr)},
+        {9U,
+         make_pair("GainMap", &DngOpcodes::constructor<DngOpcodes::GainMap>)},
         {10U,
          make_pair(
              "DeltaPerRow",

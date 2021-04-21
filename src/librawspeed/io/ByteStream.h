@@ -164,6 +164,7 @@ public:
   inline int32_t getI32() { return get<int32_t>(); }
   inline uint32_t getU32() { return get<uint32_t>(); }
   inline float getFloat() { return get<float>(); }
+  inline double getDouble() { return get<double>(); }
 
   const char* peekString() const {
     assert(data);

@@ -447,6 +447,9 @@ void DngDecoder::handleMetadata(const TiffIFD* raw) {
     mRaw->subFrame(crop);
   }
 
+  // Move crop after Stage 2 opcodes, because GainMap expects to operate on
+  // the original global image coordinates.
+#if 0
   if (raw->hasEntry(DEFAULTCROPORIGIN) && raw->hasEntry(DEFAULTCROPSIZE)) {
     iRectangle2D cropped(0, 0, mRaw->dim.x, mRaw->dim.y);
     TiffEntry *origin_entry = raw->getEntry(DEFAULTCROPORIGIN);
@@ -486,6 +489,7 @@ void DngDecoder::handleMetadata(const TiffIFD* raw) {
   }
   if (mRaw->dim.area() <= 0)
     ThrowRDE("No image left after crop");
+#endif
 
   // Apply stage 1 opcodes
   if (applyStage1DngOpcodes && raw->hasEntry(OPCODELIST1)) {
@@ -530,7 +534,7 @@ void DngDecoder::handleMetadata(const TiffIFD* raw) {
   setBlack(raw);
 
   // Apply opcodes to lossy DNG
-  if (compression == 0x884c && !uncorrectedRawValues &&
+  if (/*compression == 0x884c && */ !uncorrectedRawValues &&
       raw->hasEntry(OPCODELIST2)) {
     // We must apply black/white scaling
     mRaw->scaleBlackWhite();
@@ -550,6 +554,46 @@ void DngDecoder::handleMetadata(const TiffIFD* raw) {
         mRaw->blackLevelSeparate[2] = mRaw->blackLevelSeparate[3] = 0;
     mRaw->whitePoint = 65535;
   }
+
+  if (raw->hasEntry(DEFAULTCROPORIGIN) && raw->hasEntry(DEFAULTCROPSIZE)) {
+    iRectangle2D cropped(0, 0, mRaw->dim.x, mRaw->dim.y);
+    TiffEntry *origin_entry = raw->getEntry(DEFAULTCROPORIGIN);
+    TiffEntry *size_entry = raw->getEntry(DEFAULTCROPSIZE);
+
+    /* Read crop position (sometimes is rational so use float) */
+    const auto tl = origin_entry->getFloatArray(2);
+    if (std::any_of(tl.cbegin(), tl.cend(), [](const auto v) {
+          return v < std::numeric_limits<iPoint2D::value_type>::min() ||
+                 v > std::numeric_limits<iPoint2D::value_type>::max();
+        }))
+      ThrowRDE("Error decoding default crop origin");
+
+    iPoint2D cropOrigin(tl[0], tl[1]);
+    if (cropped.isPointInsideInclusive(cropOrigin))
+      cropped = iRectangle2D(cropOrigin, {0, 0});
+
+    cropped.dim = mRaw->dim - cropped.pos;
+
+    /* Read size (sometimes is rational so use float) */
+    const auto sz = size_entry->getFloatArray(2);
+    if (std::any_of(sz.cbegin(), sz.cend(), [](const auto v) {
+          return v < std::numeric_limits<iPoint2D::value_type>::min() ||
+                 v > std::numeric_limits<iPoint2D::value_type>::max();
+        }))
+      ThrowRDE("Error decoding default crop size");
+
+    iPoint2D size(sz[0], sz[1]);
+    if (size.isThisInside(mRaw->dim) &&
+        (size + cropped.pos).isThisInside(mRaw->dim))
+      cropped.dim = size;
+
+    if (!cropped.hasPositiveArea())
+      ThrowRDE("No positive crop area");
+
+    mRaw->subFrame(cropped);
+  }
+  if (mRaw->dim.area() <= 0)
+    ThrowRDE("No image left after crop");
 }
 
 void DngDecoder::decodeMetaDataInternal(const CameraMetaData* meta) {

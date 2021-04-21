@@ -56,6 +56,7 @@ protected:
   class LookupOpcode;
   class TableMap;
   class PolynomialMap;
+  class GainMap;
   class DeltaRowOrColBase;
   template <typename S> class DeltaRowOrCol;
   template <typename S> class OffsetPerRowOrCol;
