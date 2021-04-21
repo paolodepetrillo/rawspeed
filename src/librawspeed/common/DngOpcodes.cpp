@@ -364,12 +364,8 @@ public:
   void setup(const RawImage& ri) override {
     PixelOpcode::setup(ri);
 
-    if (mapPlanes != 1) {
-      ThrowRDE("GainMap is only supported with 1 plane");
-    }
-
-    xToRel = 1.F / ri->getUncroppedDim().x;
-    yToRel = 1.F / ri->getUncroppedDim().y;
+    xToRel = 1.0F / ri->getUncroppedDim().x;
+    yToRel = 1.0F / ri->getUncroppedDim().y;
   }
 
   void apply(const RawImage& ri) override {
@@ -377,17 +373,19 @@ public:
       this->template applyOP<uint16_t>(ri, [this](uint32_t x, uint32_t y,
                                                   uint32_t p, uint16_t v) {
         return clampBits(
-            (v * static_cast<int>(pixelGain(x, y) * 1024.0F) + 512) >> 10, 16);
+            (v * static_cast<int>(pixelGain(x, y, p) * 1024.0F) + 512) >> 10,
+            16);
       });
     } else {
       this->template applyOP<float>(
           ri, [this](uint32_t x, uint32_t y, uint32_t p, uint16_t v) {
-            return std::min(v * pixelGain(x, y), 1.0F);
+            return std::min(v * pixelGain(x, y, p), 1.0F);
           });
     }
   }
 
-  float pixelGain(uint32_t x, uint32_t y) {
+  float pixelGain(uint32_t x, uint32_t y, uint32_t p) {
+    p = std::min(p, mapPlanes - 1);
     float xMap =
         std::min(std::max(((xToRel * x) - mapOriginH) / mapSpacingH, 0.0F),
                  static_cast<float>(mapPointsH));
@@ -398,11 +396,15 @@ public:
     uint32_t yIndex = std::min(static_cast<uint32_t>(yMap), mapPointsV - 1);
     float xFrac = xMap - xIndex;
     float yFrac = yMap - yIndex;
-    float gainTop = (1.0F - xFrac) * mapGain[yIndex * mapPointsH + xIndex] +
-                    xFrac * mapGain[yIndex * mapPointsH + xIndex + 1];
+    float gainTop =
+        (1.0F - xFrac) *
+            mapGain[(yIndex * mapPointsH + xIndex) * mapPlanes + p] +
+        xFrac * mapGain[(yIndex * mapPointsH + xIndex + 1) * mapPlanes + p];
     float gainBottom =
-        (1.0F - xFrac) * mapGain[(yIndex + 1) * mapPointsH + xIndex] +
-        xFrac * mapGain[(yIndex + 1) * mapPointsH + xIndex + 1];
+        (1.0F - xFrac) *
+            mapGain[((yIndex + 1) * mapPointsH + xIndex) * mapPlanes + p] +
+        xFrac *
+            mapGain[((yIndex + 1) * mapPointsH + xIndex + 1) * mapPlanes + p];
     return (1.0F - yFrac) * gainTop + yFrac * gainBottom;
   }
 };
