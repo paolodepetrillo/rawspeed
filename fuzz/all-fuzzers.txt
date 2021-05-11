@@ -11,6 +11,8 @@ FiffParserFuzzer-GetDecoder-Decode
 FujiDecompressorFuzzer
 HasselbladDecompressorFuzzer
 HasselbladLJpegDecoderFuzzer
+IsoMParserFuzzer-GetDecoder
+IsoMParserFuzzer-GetDecoder-Decode
 KodakDecompressorFuzzer
 LJpegDecoderFuzzer
 LJpegDecompressorFuzzer

@@ -57,6 +57,15 @@ constexpr bool RAWSPEED_READNONE RangeContains(const Tr& r, Tv pos) {
   return std::end(r) > pos;
 }
 
+template <typename Tro, typename Tri>
+inline constexpr bool __attribute__((const))
+RangesAreNested(const Tro& outer, const Tri& inner) {
+  // 1. The inner range must not begin before the outer range, and
+  // 2. The outer range must not end before the inner range
+  // Same begin and/or end is ok.
+  return outer.begin() <= inner.begin() && inner.end() <= outer.end();
+}
+
 template <typename T>
 constexpr bool RAWSPEED_READNONE RangesOverlap(const T& lhs, const T& rhs) {
   if (&lhs == &rhs)
