@@ -623,7 +623,7 @@ void Cr3Decoder::decodeMetaDataInternal(const CameraMetaData* meta) {
     iso = canonBox->CMT2()
               ->mRootIFD0->getEntryRecursive(TiffTag::ISOSPEEDRATINGS)
               ->getU32();
-  if(65535 == iso) {
+  if(65535 == iso)
     // ISOSPEEDRATINGS is a SHORT EXIF value. For larger values, we have to look
     // at RECOMMENDED_EXPOSURE_INDEX (maybe Canon specific).
     if (canonBox->CMT2()->mRootIFD0->hasEntryRecursive(TiffTag::RECOMMENDEDEXPOSUREINDEX))
@@ -648,7 +648,7 @@ void Cr3Decoder::decodeMetaDataInternal(const CameraMetaData* meta) {
   assert(track3Mdia->minf->stbl->chunks.size() > 0);
   auto ctmd_chunk = track3Mdia->minf->stbl->chunks[0];
 
-  Buffer ctmd_chunk_buf = ctmd_chunk->getSubView(0);
+  // Buffer ctmd_chunk_buf = ctmd_chunk->getSubView(0);
 
   auto ctmd_recs = CanonTimedMetadata(ctmd_chunk);
 

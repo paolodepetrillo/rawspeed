@@ -20,7 +20,7 @@
 */
 
 #include "tiff/IsoMBox.h"
-#include "common/NORangesSet.h"          // for NORangesSet
+#include "adt/NORangesSet.h"             // for NORangesSet
 #include "io/Buffer.h"                   // for Buffer::size_type
 #include "parsers/IsoMParserException.h" // for ThrowIPE, IsoMParserException
 #include <algorithm>                     // for find, generate_n
